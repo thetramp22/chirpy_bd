@@ -14,15 +14,18 @@ func main() {
 	const filepathRoot = "."
 	const port = "8080"
 
-	handler := http.StripPrefix("/app", http.FileServer(http.Dir(filepathRoot)))
+	fsHandler := http.StripPrefix("/app", http.FileServer(http.Dir(filepathRoot)))
 	apiCfg := apiConfig{}
 
 	mux := http.NewServeMux()
-	mux.Handle("/app/", apiCfg.middlewareMetricsInc(handler))
-	mux.HandleFunc("POST /admin/reset", apiCfg.handlerReset)
-	mux.HandleFunc("GET /admin/metrics", apiCfg.handlerMetrics)
+	mux.Handle("/app/", apiCfg.middlewareMetricsInc(fsHandler))
+
 	mux.HandleFunc("GET /api/healthz", handlerHealthz)
 	mux.HandleFunc("POST /api/validate_chirp", handlerValidateChirp)
+
+	mux.HandleFunc("POST /admin/reset", apiCfg.handlerReset)
+	mux.HandleFunc("GET /admin/metrics", apiCfg.handlerMetrics)
+
 	srv := &http.Server{
 		Handler: mux,
 		Addr:    ":" + port,
