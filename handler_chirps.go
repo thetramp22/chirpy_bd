@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/thetramp22/chirpy_bd/internal/auth"
 	"github.com/thetramp22/chirpy_bd/internal/database"
 )
 
@@ -69,13 +70,25 @@ func (cfg *apiConfig) handlerGetChirpByID(w http.ResponseWriter, req *http.Reque
 
 func (cfg *apiConfig) handlerCreateChirp(w http.ResponseWriter, req *http.Request) {
 	type parameters struct {
-		Body   string    `json:"body"`
-		UserID uuid.UUID `json:"user_id"`
+		Body string `json:"body"`
+	}
+
+	token, err := auth.GetBearerToken(req.Header)
+	if err != nil {
+		errMsg := "Error getting token:"
+		respondWithError(w, http.StatusUnauthorized, errMsg, err)
+		return
+	}
+	userID, err := auth.ValidateJWT(token, cfg.jwtSecret)
+	if err != nil {
+		errMsg := "Error validating user token:"
+		respondWithError(w, http.StatusUnauthorized, errMsg, err)
+		return
 	}
 
 	decoder := json.NewDecoder(req.Body)
 	params := parameters{}
-	err := decoder.Decode(&params)
+	err = decoder.Decode(&params)
 	if err != nil {
 		errMsg := "Error decoding parameters:"
 		respondWithError(w, http.StatusInternalServerError, errMsg, err)
@@ -86,11 +99,12 @@ func (cfg *apiConfig) handlerCreateChirp(w http.ResponseWriter, req *http.Reques
 		respondWithError(w, http.StatusBadRequest, errMsg, err)
 		return
 	}
+
 	cleanedBody := replaceBadWords(params.Body)
 
 	dbChirp, err := cfg.dbQueries.CreateChirp(req.Context(), database.CreateChirpParams{
 		Body:   cleanedBody,
-		UserID: params.UserID,
+		UserID: userID,
 	})
 	if err != nil {
 		errMsg := "Error creating chirp:"
