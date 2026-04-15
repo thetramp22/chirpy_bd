@@ -15,6 +15,7 @@ type User struct {
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 	Email     string    `json:"email"`
+	Token     string    `json:"token"`
 }
 
 func (cfg *apiConfig) handlerCreateUser(w http.ResponseWriter, req *http.Request) {
@@ -61,8 +62,9 @@ func (cfg *apiConfig) handlerCreateUser(w http.ResponseWriter, req *http.Request
 
 func (cfg *apiConfig) handlerLogin(w http.ResponseWriter, req *http.Request) {
 	type parameters struct {
-		Password string `json:"password"`
-		Email    string `json:"email"`
+		Password         string `json:"password"`
+		Email            string `json:"email"`
+		ExpiresInSeconds *int   `json:"expires_in_seconds"`
 	}
 
 	decoder := json.NewDecoder(req.Body)
@@ -88,11 +90,24 @@ func (cfg *apiConfig) handlerLogin(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
+	ExpiresIn := time.Duration(1) * time.Hour
+	if params.ExpiresInSeconds != nil && *params.ExpiresInSeconds < 3600 {
+		ExpiresIn = time.Duration(*params.ExpiresInSeconds) * time.Second
+	}
+
+	token, err := auth.MakeJWT(dbUser.ID, cfg.jwtSecret, ExpiresIn)
+	if err != nil {
+		errMsg := "Error getting token:"
+		respondWithError(w, http.StatusInternalServerError, errMsg, err)
+		return
+	}
+
 	user := User{
 		ID:        dbUser.ID,
 		CreatedAt: dbUser.CreatedAt,
 		UpdatedAt: dbUser.UpdatedAt,
 		Email:     dbUser.Email,
+		Token:     token,
 	}
 
 	respondWithJSON(w, http.StatusOK, user)
