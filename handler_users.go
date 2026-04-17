@@ -185,3 +185,48 @@ func (cfg *apiConfig) handlerRevoke(w http.ResponseWriter, req *http.Request) {
 
 	respondWithJSON(w, http.StatusNoContent, nil)
 }
+
+func (cfg *apiConfig) handlerUpdateCredentials(w http.ResponseWriter, req *http.Request) {
+	type parameters struct {
+		Password string `json:"password"`
+		Email    string `json:"email"`
+	}
+
+	token, err := auth.GetBearerToken(req.Header)
+	if err != nil {
+		errMsg := "Error getting token:"
+		respondWithError(w, http.StatusUnauthorized, errMsg, err)
+		return
+	}
+	userID, err := auth.ValidateJWT(token, cfg.jwtSecret)
+	if err != nil {
+		errMsg := "Error validating user token:"
+		respondWithError(w, http.StatusUnauthorized, errMsg, err)
+		return
+	}
+
+	decoder := json.NewDecoder(req.Body)
+	params := parameters{}
+	err = decoder.Decode(&params)
+	if err != nil {
+		errMsg := "Error decoding parameters:"
+		respondWithError(w, http.StatusInternalServerError, errMsg, err)
+		return
+	}
+
+	if params.Email == "" || params.Password == "" {
+		errMsg := "Invalid email or password:"
+		respondWithError(w, http.StatusUnauthorized, errMsg, err)
+		return
+	}
+
+	hashedPassword, err := auth.HashPassword(params.Password)
+
+	cfg.dbQueries.UpdateUser(req.Context(), database.UpdateUserParams{
+		Email:          params.Email,
+		HashedPassword: hashedPassword,
+		ID:             userID,
+	})
+
+	respondWithJSON(w, http.StatusOK, nil)
+}
