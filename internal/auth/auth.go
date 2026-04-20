@@ -63,11 +63,11 @@ func ValidateJWT(tokenString, tokenSecret string) (uuid.UUID, error) {
 }
 
 func GetBearerToken(headers http.Header) (string, error) {
-	header := headers.Get("Authorization")
-	if header == "" {
+	authHeader := headers.Get("Authorization")
+	if authHeader == "" {
 		return "", errors.New("Authorization token does not exist")
 	}
-	token := strings.TrimSpace(header)
+	token := strings.TrimSpace(authHeader)
 	token = strings.TrimPrefix(token, "Bearer ")
 	token = strings.TrimSpace(token)
 

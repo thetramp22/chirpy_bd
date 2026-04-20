@@ -11,12 +11,10 @@ import (
 )
 
 type User struct {
-	ID           uuid.UUID `json:"id"`
-	CreatedAt    time.Time `json:"created_at"`
-	UpdatedAt    time.Time `json:"updated_at"`
-	Email        string    `json:"email"`
-	Token        string    `json:"token"`
-	RefreshToken string    `json:"refresh_token"`
+	ID        uuid.UUID `json:"id"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+	Email     string    `json:"email"`
 }
 
 func (cfg *apiConfig) handlerCreateUser(w http.ResponseWriter, req *http.Request) {
@@ -67,6 +65,12 @@ func (cfg *apiConfig) handlerLogin(w http.ResponseWriter, req *http.Request) {
 		Email    string `json:"email"`
 	}
 
+	type response struct {
+		User
+		Token        string `json:"token"`
+		RefreshToken string `json:"refresh_token"`
+	}
+
 	decoder := json.NewDecoder(req.Body)
 	params := parameters{}
 	err := decoder.Decode(&params)
@@ -76,14 +80,14 @@ func (cfg *apiConfig) handlerLogin(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	dbUser, err := cfg.dbQueries.GetUserByEmail(req.Context(), params.Email)
+	user, err := cfg.dbQueries.GetUserByEmail(req.Context(), params.Email)
 	if err != nil {
 		errMsg := "Error getting user:"
 		respondWithError(w, http.StatusUnauthorized, errMsg, err)
 		return
 	}
 
-	passwordMatch, err := auth.CheckPasswordHash(params.Password, dbUser.HashedPassword)
+	passwordMatch, err := auth.CheckPasswordHash(params.Password, user.HashedPassword)
 	if err != nil || passwordMatch == false {
 		errMsg := "Password does not match:"
 		respondWithError(w, http.StatusUnauthorized, errMsg, err)
@@ -92,16 +96,18 @@ func (cfg *apiConfig) handlerLogin(w http.ResponseWriter, req *http.Request) {
 
 	ExpiresIn := time.Duration(1) * time.Hour
 
-	accessToken, err := auth.MakeJWT(dbUser.ID, cfg.jwtSecret, ExpiresIn)
+	accessToken, err := auth.MakeJWT(user.ID, cfg.jwtSecret, ExpiresIn)
 	if err != nil {
 		errMsg := "Error getting token:"
 		respondWithError(w, http.StatusInternalServerError, errMsg, err)
 		return
 	}
 
-	refreshToken, err := cfg.dbQueries.CreateRefreshToken(req.Context(), database.CreateRefreshTokenParams{
-		Token:     auth.MakeRefreshToken(),
-		UserID:    dbUser.ID,
+	refreshToken := auth.MakeRefreshToken()
+
+	_, err = cfg.dbQueries.CreateRefreshToken(req.Context(), database.CreateRefreshTokenParams{
+		Token:     refreshToken,
+		UserID:    user.ID,
 		ExpiresAt: time.Now().UTC().AddDate(0, 0, 60),
 	})
 	if err != nil {
@@ -109,16 +115,16 @@ func (cfg *apiConfig) handlerLogin(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	user := User{
-		ID:           dbUser.ID,
-		CreatedAt:    dbUser.CreatedAt,
-		UpdatedAt:    dbUser.UpdatedAt,
-		Email:        dbUser.Email,
+	respondWithJSON(w, http.StatusOK, response{
+		User: User{
+			ID:        user.ID,
+			CreatedAt: user.CreatedAt,
+			UpdatedAt: user.UpdatedAt,
+			Email:     user.Email,
+		},
 		Token:        accessToken,
-		RefreshToken: refreshToken.Token,
-	}
-
-	respondWithJSON(w, http.StatusOK, user)
+		RefreshToken: refreshToken,
+	})
 }
 
 func (cfg *apiConfig) handlerRefresh(w http.ResponseWriter, req *http.Request) {
@@ -222,11 +228,21 @@ func (cfg *apiConfig) handlerUpdateCredentials(w http.ResponseWriter, req *http.
 
 	hashedPassword, err := auth.HashPassword(params.Password)
 
-	cfg.dbQueries.UpdateUser(req.Context(), database.UpdateUserParams{
+	user, err := cfg.dbQueries.UpdateUser(req.Context(), database.UpdateUserParams{
 		Email:          params.Email,
 		HashedPassword: hashedPassword,
 		ID:             userID,
 	})
+	if err != nil {
+		errMsg := "Error updating user:"
+		respondWithError(w, http.StatusUnauthorized, errMsg, err)
+		return
+	}
 
-	respondWithJSON(w, http.StatusOK, nil)
+	respondWithJSON(w, http.StatusOK, User{
+		ID:        user.ID,
+		CreatedAt: user.CreatedAt,
+		UpdatedAt: user.UpdatedAt,
+		Email:     user.Email,
+	})
 }
