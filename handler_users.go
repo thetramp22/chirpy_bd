@@ -11,10 +11,11 @@ import (
 )
 
 type User struct {
-	ID        uuid.UUID `json:"id"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
-	Email     string    `json:"email"`
+	ID          uuid.UUID `json:"id"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+	Email       string    `json:"email"`
+	IsChirpyRed bool      `json:"is_chirpy_red"`
 }
 
 func (cfg *apiConfig) handlerCreateUser(w http.ResponseWriter, req *http.Request) {
@@ -39,7 +40,7 @@ func (cfg *apiConfig) handlerCreateUser(w http.ResponseWriter, req *http.Request
 		return
 	}
 
-	dbUser, err := cfg.dbQueries.CreateUser(req.Context(), database.CreateUserParams{
+	user, err := cfg.dbQueries.CreateUser(req.Context(), database.CreateUserParams{
 		Email:          params.Email,
 		HashedPassword: hashedPassord,
 	})
@@ -49,14 +50,13 @@ func (cfg *apiConfig) handlerCreateUser(w http.ResponseWriter, req *http.Request
 		return
 	}
 
-	user := User{
-		ID:        dbUser.ID,
-		CreatedAt: dbUser.CreatedAt,
-		UpdatedAt: dbUser.UpdatedAt,
-		Email:     dbUser.Email,
-	}
-
-	respondWithJSON(w, http.StatusCreated, user)
+	respondWithJSON(w, http.StatusCreated, User{
+		ID:          user.ID,
+		CreatedAt:   user.CreatedAt,
+		UpdatedAt:   user.UpdatedAt,
+		Email:       user.Email,
+		IsChirpyRed: user.IsChirpyRed,
+	})
 }
 
 func (cfg *apiConfig) handlerLogin(w http.ResponseWriter, req *http.Request) {
@@ -117,10 +117,11 @@ func (cfg *apiConfig) handlerLogin(w http.ResponseWriter, req *http.Request) {
 
 	respondWithJSON(w, http.StatusOK, response{
 		User: User{
-			ID:        user.ID,
-			CreatedAt: user.CreatedAt,
-			UpdatedAt: user.UpdatedAt,
-			Email:     user.Email,
+			ID:          user.ID,
+			CreatedAt:   user.CreatedAt,
+			UpdatedAt:   user.UpdatedAt,
+			Email:       user.Email,
+			IsChirpyRed: user.IsChirpyRed,
 		},
 		Token:        accessToken,
 		RefreshToken: refreshToken,
@@ -177,11 +178,11 @@ func (cfg *apiConfig) handlerRevoke(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	dbToken, err := cfg.dbQueries.GetRefreshToken(req.Context(), refreshToken)
+	match, err := cfg.dbQueries.GetRefreshToken(req.Context(), refreshToken)
 	if err != nil ||
-		dbToken.Token != refreshToken ||
-		time.Now().UTC().After(dbToken.ExpiresAt) ||
-		(dbToken.RevokedAt.Valid == true && time.Now().UTC().After(dbToken.RevokedAt.Time)) {
+		match.Token != refreshToken ||
+		time.Now().UTC().After(match.ExpiresAt) ||
+		(match.RevokedAt.Valid == true && time.Now().UTC().After(match.RevokedAt.Time)) {
 		errMsg := "Invalid token:"
 		respondWithError(w, http.StatusUnauthorized, errMsg, err)
 		return
@@ -240,9 +241,45 @@ func (cfg *apiConfig) handlerUpdateCredentials(w http.ResponseWriter, req *http.
 	}
 
 	respondWithJSON(w, http.StatusOK, User{
-		ID:        user.ID,
-		CreatedAt: user.CreatedAt,
-		UpdatedAt: user.UpdatedAt,
-		Email:     user.Email,
+		ID:          user.ID,
+		CreatedAt:   user.CreatedAt,
+		UpdatedAt:   user.UpdatedAt,
+		Email:       user.Email,
+		IsChirpyRed: user.IsChirpyRed,
 	})
+}
+
+func (cfg *apiConfig) handlerUpgradeUserToRed(w http.ResponseWriter, req *http.Request) {
+	type parameters struct {
+		Event string `json:"event"`
+		Data  struct {
+			UserID uuid.UUID `json:"user_id"`
+		} `json:"data"`
+	}
+
+	decoder := json.NewDecoder(req.Body)
+	params := parameters{}
+	err := decoder.Decode(&params)
+	if err != nil {
+		errMsg := "Error decoding parameters:"
+		respondWithError(w, http.StatusInternalServerError, errMsg, err)
+		return
+	}
+
+	if params.Event != "user.upgraded" {
+		respondWithJSON(w, http.StatusNoContent, nil)
+		return
+	}
+
+	_, err = cfg.dbQueries.SetChripyRedStatus(req.Context(), database.SetChripyRedStatusParams{
+		IsChirpyRed: true,
+		ID:          params.Data.UserID,
+	})
+	if err != nil {
+		errMsg := "Error getting user:"
+		respondWithError(w, http.StatusNotFound, errMsg, err)
+		return
+	}
+
+	respondWithJSON(w, http.StatusNoContent, nil)
 }

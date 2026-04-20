@@ -49,22 +49,20 @@ func (cfg *apiConfig) handlerGetChirpByID(w http.ResponseWriter, req *http.Reque
 		respondWithError(w, http.StatusInternalServerError, errMsg, err)
 		return
 	}
-	dbChirp, err := cfg.dbQueries.GetChirpByID(req.Context(), chirpID)
+	chirp, err := cfg.dbQueries.GetChirpByID(req.Context(), chirpID)
 	if err != nil {
 		errMsg := "Error getting chirp:"
 		respondWithError(w, http.StatusNotFound, errMsg, err)
 		return
 	}
 
-	chirp := Chirp{
-		ID:        dbChirp.ID,
-		CreatedAt: dbChirp.CreatedAt,
-		UpdatedAt: dbChirp.UpdatedAt,
-		Body:      dbChirp.Body,
-		UserID:    dbChirp.UserID,
-	}
-
-	respondWithJSON(w, http.StatusOK, chirp)
+	respondWithJSON(w, http.StatusOK, Chirp{
+		ID:        chirp.ID,
+		CreatedAt: chirp.CreatedAt,
+		UpdatedAt: chirp.UpdatedAt,
+		Body:      chirp.Body,
+		UserID:    chirp.UserID,
+	})
 
 }
 
@@ -102,7 +100,7 @@ func (cfg *apiConfig) handlerCreateChirp(w http.ResponseWriter, req *http.Reques
 
 	cleanedBody := replaceBadWords(params.Body)
 
-	dbChirp, err := cfg.dbQueries.CreateChirp(req.Context(), database.CreateChirpParams{
+	chirp, err := cfg.dbQueries.CreateChirp(req.Context(), database.CreateChirpParams{
 		Body:   cleanedBody,
 		UserID: userID,
 	})
@@ -112,15 +110,13 @@ func (cfg *apiConfig) handlerCreateChirp(w http.ResponseWriter, req *http.Reques
 		return
 	}
 
-	chirp := Chirp{
-		ID:        dbChirp.ID,
-		CreatedAt: dbChirp.CreatedAt,
-		UpdatedAt: dbChirp.UpdatedAt,
-		Body:      dbChirp.Body,
-		UserID:    dbChirp.UserID,
-	}
-
-	respondWithJSON(w, http.StatusCreated, chirp)
+	respondWithJSON(w, http.StatusCreated, Chirp{
+		ID:        chirp.ID,
+		CreatedAt: chirp.CreatedAt,
+		UpdatedAt: chirp.UpdatedAt,
+		Body:      chirp.Body,
+		UserID:    chirp.UserID,
+	})
 }
 
 func replaceBadWords(msg string) string {
@@ -133,4 +129,47 @@ func replaceBadWords(msg string) string {
 	}
 	cleanMsg := strings.Join(cleanMsgSlice, " ")
 	return cleanMsg
+}
+
+func (cfg *apiConfig) handlerDeleteChirpByID(w http.ResponseWriter, req *http.Request) {
+	token, err := auth.GetBearerToken(req.Header)
+	if err != nil {
+		errMsg := "Error getting token:"
+		respondWithError(w, http.StatusUnauthorized, errMsg, err)
+		return
+	}
+	userID, err := auth.ValidateJWT(token, cfg.jwtSecret)
+	if err != nil {
+		errMsg := "Error validating user token:"
+		respondWithError(w, http.StatusUnauthorized, errMsg, err)
+		return
+	}
+
+	chirpID, err := uuid.Parse(req.PathValue("chirpID"))
+	if err != nil {
+		errMsg := "Error parsing uuid:"
+		respondWithError(w, http.StatusInternalServerError, errMsg, err)
+		return
+	}
+	chirp, err := cfg.dbQueries.GetChirpByID(req.Context(), chirpID)
+	if err != nil {
+		errMsg := "Error getting chirp:"
+		respondWithError(w, http.StatusNotFound, errMsg, err)
+		return
+	}
+
+	if userID != chirp.UserID {
+		errMsg := "User not authorized to delete chirp:"
+		respondWithError(w, http.StatusForbidden, errMsg, err)
+		return
+	}
+
+	err = cfg.dbQueries.DeleteChirpByID(req.Context(), chirp.ID)
+	if err != nil {
+		errMsg := "Error deleting chirp:"
+		respondWithError(w, http.StatusInternalServerError, errMsg, err)
+		return
+	}
+
+	respondWithJSON(w, http.StatusNoContent, nil)
 }
