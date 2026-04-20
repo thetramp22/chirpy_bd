@@ -11,7 +11,7 @@ func (cfg *apiConfig) handlerReset(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	cfg.dbQueries.DeleteAllUsers(req.Context())
+	cfg.db.DeleteAllUsers(req.Context())
 
 	cfg.fileserverHits.Store(0)
 	w.WriteHeader(http.StatusOK)

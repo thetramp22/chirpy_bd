@@ -20,7 +20,7 @@ type Chirp struct {
 }
 
 func (cfg *apiConfig) handlerGetChirps(w http.ResponseWriter, req *http.Request) {
-	dbChirps, err := cfg.dbQueries.GetAllChirps(req.Context())
+	dbChirps, err := cfg.db.GetAllChirps(req.Context())
 	if err != nil {
 		errMsg := "Error getting chirps:"
 		respondWithError(w, http.StatusInternalServerError, errMsg, err)
@@ -49,7 +49,7 @@ func (cfg *apiConfig) handlerGetChirpByID(w http.ResponseWriter, req *http.Reque
 		respondWithError(w, http.StatusInternalServerError, errMsg, err)
 		return
 	}
-	chirp, err := cfg.dbQueries.GetChirpByID(req.Context(), chirpID)
+	chirp, err := cfg.db.GetChirpByID(req.Context(), chirpID)
 	if err != nil {
 		errMsg := "Error getting chirp:"
 		respondWithError(w, http.StatusNotFound, errMsg, err)
@@ -100,7 +100,7 @@ func (cfg *apiConfig) handlerCreateChirp(w http.ResponseWriter, req *http.Reques
 
 	cleanedBody := replaceBadWords(params.Body)
 
-	chirp, err := cfg.dbQueries.CreateChirp(req.Context(), database.CreateChirpParams{
+	chirp, err := cfg.db.CreateChirp(req.Context(), database.CreateChirpParams{
 		Body:   cleanedBody,
 		UserID: userID,
 	})
@@ -151,7 +151,7 @@ func (cfg *apiConfig) handlerDeleteChirpByID(w http.ResponseWriter, req *http.Re
 		respondWithError(w, http.StatusInternalServerError, errMsg, err)
 		return
 	}
-	chirp, err := cfg.dbQueries.GetChirpByID(req.Context(), chirpID)
+	chirp, err := cfg.db.GetChirpByID(req.Context(), chirpID)
 	if err != nil {
 		errMsg := "Error getting chirp:"
 		respondWithError(w, http.StatusNotFound, errMsg, err)
@@ -164,7 +164,7 @@ func (cfg *apiConfig) handlerDeleteChirpByID(w http.ResponseWriter, req *http.Re
 		return
 	}
 
-	err = cfg.dbQueries.DeleteChirpByID(req.Context(), chirp.ID)
+	err = cfg.db.DeleteChirpByID(req.Context(), chirp.ID)
 	if err != nil {
 		errMsg := "Error deleting chirp:"
 		respondWithError(w, http.StatusInternalServerError, errMsg, err)

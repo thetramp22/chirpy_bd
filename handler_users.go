@@ -40,7 +40,7 @@ func (cfg *apiConfig) handlerCreateUser(w http.ResponseWriter, req *http.Request
 		return
 	}
 
-	user, err := cfg.dbQueries.CreateUser(req.Context(), database.CreateUserParams{
+	user, err := cfg.db.CreateUser(req.Context(), database.CreateUserParams{
 		Email:          params.Email,
 		HashedPassword: hashedPassord,
 	})
@@ -80,7 +80,7 @@ func (cfg *apiConfig) handlerLogin(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	user, err := cfg.dbQueries.GetUserByEmail(req.Context(), params.Email)
+	user, err := cfg.db.GetUserByEmail(req.Context(), params.Email)
 	if err != nil {
 		errMsg := "Error getting user:"
 		respondWithError(w, http.StatusUnauthorized, errMsg, err)
@@ -105,7 +105,7 @@ func (cfg *apiConfig) handlerLogin(w http.ResponseWriter, req *http.Request) {
 
 	refreshToken := auth.MakeRefreshToken()
 
-	_, err = cfg.dbQueries.CreateRefreshToken(req.Context(), database.CreateRefreshTokenParams{
+	_, err = cfg.db.CreateRefreshToken(req.Context(), database.CreateRefreshTokenParams{
 		Token:     refreshToken,
 		UserID:    user.ID,
 		ExpiresAt: time.Now().UTC().AddDate(0, 0, 60),
@@ -136,7 +136,7 @@ func (cfg *apiConfig) handlerRefresh(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	dbToken, err := cfg.dbQueries.GetRefreshToken(req.Context(), refreshToken)
+	dbToken, err := cfg.db.GetRefreshToken(req.Context(), refreshToken)
 	if err != nil ||
 		dbToken.Token != refreshToken ||
 		time.Now().UTC().After(dbToken.ExpiresAt) ||
@@ -146,7 +146,7 @@ func (cfg *apiConfig) handlerRefresh(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	user, err := cfg.dbQueries.GetUserFromRefreshToken(req.Context(), refreshToken)
+	user, err := cfg.db.GetUserFromRefreshToken(req.Context(), refreshToken)
 	if err != nil {
 		errMsg := "Error getting user:"
 		respondWithError(w, http.StatusUnauthorized, errMsg, err)
@@ -178,7 +178,7 @@ func (cfg *apiConfig) handlerRevoke(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	match, err := cfg.dbQueries.GetRefreshToken(req.Context(), refreshToken)
+	match, err := cfg.db.GetRefreshToken(req.Context(), refreshToken)
 	if err != nil ||
 		match.Token != refreshToken ||
 		time.Now().UTC().After(match.ExpiresAt) ||
@@ -188,7 +188,7 @@ func (cfg *apiConfig) handlerRevoke(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	cfg.dbQueries.RevokeRefreshToken(req.Context(), refreshToken)
+	cfg.db.RevokeRefreshToken(req.Context(), refreshToken)
 
 	respondWithJSON(w, http.StatusNoContent, nil)
 }
@@ -229,7 +229,7 @@ func (cfg *apiConfig) handlerUpdateCredentials(w http.ResponseWriter, req *http.
 
 	hashedPassword, err := auth.HashPassword(params.Password)
 
-	user, err := cfg.dbQueries.UpdateUser(req.Context(), database.UpdateUserParams{
+	user, err := cfg.db.UpdateUser(req.Context(), database.UpdateUserParams{
 		Email:          params.Email,
 		HashedPassword: hashedPassword,
 		ID:             userID,
@@ -250,6 +250,13 @@ func (cfg *apiConfig) handlerUpdateCredentials(w http.ResponseWriter, req *http.
 }
 
 func (cfg *apiConfig) handlerUpgradeUserToRed(w http.ResponseWriter, req *http.Request) {
+	apiKey, err := auth.GetAPIKey(req.Header)
+	if err != nil || apiKey != cfg.polkaKey {
+		errMsg := "Error getting apikey"
+		respondWithError(w, http.StatusUnauthorized, errMsg, err)
+		return
+	}
+
 	type parameters struct {
 		Event string `json:"event"`
 		Data  struct {
@@ -259,7 +266,7 @@ func (cfg *apiConfig) handlerUpgradeUserToRed(w http.ResponseWriter, req *http.R
 
 	decoder := json.NewDecoder(req.Body)
 	params := parameters{}
-	err := decoder.Decode(&params)
+	err = decoder.Decode(&params)
 	if err != nil {
 		errMsg := "Error decoding parameters:"
 		respondWithError(w, http.StatusInternalServerError, errMsg, err)
@@ -271,7 +278,7 @@ func (cfg *apiConfig) handlerUpgradeUserToRed(w http.ResponseWriter, req *http.R
 		return
 	}
 
-	_, err = cfg.dbQueries.SetChripyRedStatus(req.Context(), database.SetChripyRedStatusParams{
+	_, err = cfg.db.SetChripyRedStatus(req.Context(), database.SetChripyRedStatusParams{
 		IsChirpyRed: true,
 		ID:          params.Data.UserID,
 	})
